@@ -22,8 +22,7 @@ test('الدفعة سبعة مقالات أصلية بصور ومراجع وجد
     assert.ok(a.sources.every(s => s.label && new URL(s.url).protocol === 'https:'));
     assert.ok(a.related.every(r => r.label && r.href.startsWith('/') && !r.href.startsWith('//')));
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'public', a.image)));
-    if (index > 0) assert.ok(Date.parse(a.publishedAt) > Date.parse(articles[index - 1].publishedAt));
-    if (index > 1) assert.equal(Date.parse(a.publishedAt) - Date.parse(articles[index - 1].publishedAt), 86400000);
+    assert.ok(Date.parse(a.publishedAt) <= Date.now(), `${a.slug} must not be future-dated`);
   });
 });
 
@@ -40,19 +39,15 @@ test('الفحص الآلي يستبعد أي مقال ناقص قبل إتاح�
 
 test('الحجب الزمني والخريطة لا يعرضان المقالات المقبلة مبكرًا', () => {
   assert.equal(getPublishedArticles(Date.parse('2026-10-27T23:59:59Z')).length, 0);
-  assert.equal(getPublishedArticles(Date.parse('2026-10-29T07:59:59Z')).length, 1);
-  assert.equal(getPublishedArticles(Date.parse('2026-10-29T08:00:00Z')).length, 2);
-  assert.equal(getPublishedArticles(Date.parse('2026-11-03T08:00:00Z')).length, 7);
-  assert.equal(getPublishedArticles(Date.parse('2026-11-04T07:59:59Z')).length, 7);
-  assert.equal(getPublishedArticles(Date.parse('2026-11-04T08:00:00Z')).length, 8);
-  assert.equal(getPublishedArticles(Date.parse('2026-11-11T08:00:00Z')).length, 15);
-  const xml = sitemapXml(ORIGIN, Date.parse('2026-10-29T07:59:59Z'));
-  assert.equal((xml.match(/<loc>/g) || []).length, 117);
-  assert.ok(xml.includes(`${ORIGIN}/articles/${articles[0].slug}`));
-  assert.ok(!xml.includes(articles[1].slug));
-  const index = articlesPage(ORIGIN, Date.parse('2026-10-29T07:59:59Z'));
-  assert.ok(index.includes(articles[0].slug));
-  assert.ok(!index.includes(articles[1].slug));
+  assert.equal(getPublishedArticles(Date.parse('2026-10-28T00:00:00Z')).length, 15);
+  assert.equal(getPublishedArticles().length, 15);
+  const xml = sitemapXml(ORIGIN);
+  assert.equal((xml.match(/<loc>/g) || []).length, 131); // 116 fixed pages + 15 articles
+  articles.forEach(a => assert.ok(xml.includes(`${ORIGIN}/articles/${a.slug}`)));
+  assert.equal((xml.match(/<image:loc>/g) || []).length, 15);
+  const index = articlesPage(ORIGIN);
+  articles.forEach(a => assert.ok(index.includes(a.slug)));
+  assert.equal((index.match(/journal-card-image/g) || []).length, 15);
 });
 
 test('المقال يعرض إفصاحًا وروابط وصورة وبيانات منظمة مطابقة', () => {
@@ -76,10 +71,10 @@ test('المقال يعرض إفصاحًا وروابط وصورة وبيانا�
 test('IndexNow يرسل المنشور حديثًا فقط ويقف بعد نفاد الدفعة', async () => {
   assert.equal(validIndexNowKey('abcdef0123456789'), true);
   assert.equal(validIndexNowKey('../not-a-key'), false);
-  const instant = Date.parse('2026-10-29T09:30:00Z');
+  const instant = Date.parse('2026-10-28T12:00:00Z');
   const urls = recentArticleUrls(ORIGIN, instant);
-  assert.equal(urls.length, 3); // index + first two articles
-  assert.ok(!urls.some(url => url.includes(articles[2].slug)));
+  assert.equal(urls.length, articles.length + 1); // magazine index + every article published today
+  assert.equal(urls[0], `${ORIGIN}/articles`);
   let called = 0;
   const bodies = [];
   const fetchMock = async (url, options) => {
@@ -92,15 +87,14 @@ test('IndexNow يرسل المنشور حديثًا فقط ويقف بعد نف�
     bodies.push(body);
     return {status:202};
   };
-  assert.deepEqual(await notifyRecentArticles(ORIGIN, 'abcdef0123456789', instant, fetchMock), {submitted:3,status:202});
+  assert.deepEqual(await notifyRecentArticles(ORIGIN, 'abcdef0123456789', instant, fetchMock), {submitted:16,status:202});
   assert.deepEqual(bodies[0].urlList, urls);
   assert.equal(called, 1);
-  const duringQueue = await notifyRecentArticles(ORIGIN, 'abcdef0123456789', Date.parse('2026-11-10T09:30:00Z'), fetchMock);
-  assert.equal(duringQueue.submitted, 3); // the magazine index plus the two most recent articles
-  assert.equal(duringQueue.status, 202);
-  assert.equal(called, 2);
+  const afterWindow = await notifyRecentArticles(ORIGIN, 'abcdef0123456789', Date.parse('2026-10-31T09:30:00Z'), fetchMock);
+  assert.deepEqual(afterWindow, {submitted:0,status:null}); // nothing within 48h any more
+  assert.equal(called, 1);
   assert.deepEqual(await notifyRecentArticles(ORIGIN, 'abcdef0123456789', Date.parse('2026-11-20T09:30:00Z'), fetchMock), {submitted:0,status:null});
-  assert.equal(called, 2);
+  assert.equal(called, 1);
   await assert.rejects(notifyRecentArticles(ORIGIN, 'bad', instant, fetchMock));
 });
 
@@ -145,6 +139,11 @@ test('الصفحات والصور وملف IndexNow تعمل، والجدولة 
   const rssRedirect = await fetch(`${origin}/rss.xml`, {redirect:'manual'});
   assert.equal(rssRedirect.status, 301);
   assert.equal(rssRedirect.headers.get('location'), '/feed.xml');
+  const surah = await (await fetch(`${origin}/surah/18`)).text();
+  assert.ok(surah.includes('surah-journal'), 'surah pages link to the magazine');
+  assert.ok(surah.includes('/articles/surah-al-kahf-reading-guide'));
+  const surahLinks = new Set((surah.match(/href="\/articles\/[a-z0-9-]+"/g) || []).map(value => value.slice(7, -1)));
+  assert.equal(surahLinks.size, 3);
   const llms = await (await fetch(`${origin}/llms.txt`)).text();
   assert.match(llms, /^# سَنا للقرآن الكريم/);
   assert.ok(llms.includes(`${origin}/surah/114`));
