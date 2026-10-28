@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {server, chapters, verses, splitOpening, normalize} = require('../server');
+const {server, chapters, verses, splitOpening, normalize, getPublishedArticles} = require('../server');
 
 test('المصحف: ١١٤ سورة و٦٢٣٦ آية بترتيب صحيح', () => {
   assert.equal(chapters.length, 114);
@@ -39,7 +39,7 @@ test('صفحة الكهف قابلة للفهرسة وخريطة الموقع ت
   assert.match(html, /rel="canonical"/);
   assert.match(html, /application\/ld\+json/);
   const sitemap = await (await fetch(`${origin}/sitemap.xml`)).text();
-  assert.equal((sitemap.match(/<loc>/g) || []).length, 115);
+  assert.equal((sitemap.match(/<loc>/g) || []).length, 116 + getPublishedArticles().length);
   assert.match(sitemap, /\/surah\/18<\/loc>/);
   const robots = await (await fetch(`${origin}/robots.txt`)).text();
   assert.match(robots, /Sitemap:/);

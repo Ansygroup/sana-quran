@@ -1,0 +1,127 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {
+  server, articles, validateArticleBatch, getPublishedArticles, articlesPage, articlePage,
+  sitemapXml, recentArticleUrls, notifyRecentArticles, validIndexNowKey
+} = require('../server');
+const ORIGIN = 'https://sana-quran.vercel.app';
+const htmlSchema = html => JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
+
+test('الدفعة سبعة مقالات أصلية بصور ومراجع وجدول يومي واضح', () => {
+  assert.equal(articles.length, 7);
+  assert.equal(new Set(articles.map(a => a.slug)).size, 7);
+  assert.equal(new Set(articles.map(a => a.title)).size, 7);
+  articles.forEach((a, index) => {
+    assert.match(a.slug, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+    assert.ok(a.title && a.summary && a.lead && a.imageAlt);
+    assert.ok(a.sections.length >= 3 && a.sources.length >= 2 && a.related.length >= 1);
+    assert.ok(a.sections.every(s => s.heading && s.paragraphs.length && s.paragraphs.every(Boolean)));
+    assert.ok(a.sources.every(s => s.label && new URL(s.url).protocol === 'https:'));
+    assert.ok(a.related.every(r => r.label && r.href.startsWith('/') && !r.href.startsWith('//')));
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'public', a.image)));
+    if (index > 0) assert.ok(Date.parse(a.publishedAt) > Date.parse(articles[index - 1].publishedAt));
+    if (index > 1) assert.equal(Date.parse(a.publishedAt) - Date.parse(articles[index - 1].publishedAt), 86400000);
+  });
+});
+
+test('الفحص الآلي يستبعد أي مقال ناقص قبل إتاحته', () => {
+  assert.equal(validateArticleBatch(articles).length, 7);
+  const a = articles[0];
+  assert.equal(validateArticleBatch([{...a, image:'/articles/missing.webp'}]).length, 0);
+  assert.equal(validateArticleBatch([{...a, sources:[a.sources[0]]}]).length, 0);
+  assert.equal(validateArticleBatch([{...a, sources:[{label:'bad source',url:'javascript:alert(1)'},a.sources[0]]}]).length, 0);
+  assert.equal(validateArticleBatch([{...a, related:[{label:'unsafe',href:'//example.com'}]}]).length, 0);
+  assert.equal(validateArticleBatch([{...a, sections:a.sections.map(s => ({...s, paragraphs:['قصير جدًا']}))}]).length, 0);
+  assert.equal(validateArticleBatch([a, {...a}]).length, 0);
+});
+
+test('الحجب الزمني والخريطة لا يعرضان المقالات المقبلة مبكرًا', () => {
+  assert.equal(getPublishedArticles(Date.parse('2026-10-27T23:59:59Z')).length, 0);
+  assert.equal(getPublishedArticles(Date.parse('2026-10-29T07:59:59Z')).length, 1);
+  assert.equal(getPublishedArticles(Date.parse('2026-10-29T08:00:00Z')).length, 2);
+  assert.equal(getPublishedArticles(Date.parse('2026-11-03T08:00:00Z')).length, 7);
+  const xml = sitemapXml(ORIGIN, Date.parse('2026-10-29T07:59:59Z'));
+  assert.equal((xml.match(/<loc>/g) || []).length, 117);
+  assert.ok(xml.includes(`${ORIGIN}/articles/${articles[0].slug}`));
+  assert.ok(!xml.includes(articles[1].slug));
+  const index = articlesPage(ORIGIN, Date.parse('2026-10-29T07:59:59Z'));
+  assert.ok(index.includes(articles[0].slug));
+  assert.ok(!index.includes(articles[1].slug));
+});
+
+test('المقال يعرض إفصاحًا وروابط وصورة وبيانات منظمة مطابقة', () => {
+  const article = articles[0], url = `${ORIGIN}/articles/${article.slug}`;
+  const html = articlePage(article, ORIGIN, Date.parse('2026-10-28T20:00:00Z'));
+  assert.ok(html.includes('أُعدّ بمساعدة الذكاء الاصطناعي'));
+  assert.ok(html.includes('صورة توضيحية مولّدة بالذكاء الاصطناعي'));
+  assert.ok(html.includes(`rel="canonical" href="${url}"`));
+  assert.ok(html.includes(`content="${ORIGIN}${article.image}"`));
+  const schema = htmlSchema(html);
+  const node = schema['@graph'].find(item => item['@type'] === 'Article');
+  assert.equal(node.headline, article.title);
+  assert.equal(node.datePublished, article.publishedAt);
+  assert.deepEqual(node.image, [`${ORIGIN}${article.image}`]);
+  assert.equal(node.author.name, 'سَنا');
+  const breadcrumb = schema['@graph'].find(item => item['@type'] === 'BreadcrumbList');
+  assert.equal(breadcrumb.itemListElement.at(-1).item, url);
+  assert.ok(article.related.every(r => html.includes(`href="${r.href}"`)));
+});
+
+test('IndexNow يرسل المنشور حديثًا فقط ويقف بعد نفاد الدفعة', async () => {
+  assert.equal(validIndexNowKey('abcdef0123456789'), true);
+  assert.equal(validIndexNowKey('../not-a-key'), false);
+  const instant = Date.parse('2026-10-29T09:30:00Z');
+  const urls = recentArticleUrls(ORIGIN, instant);
+  assert.equal(urls.length, 3); // index + first two articles
+  assert.ok(!urls.some(url => url.includes(articles[2].slug)));
+  let called = 0;
+  const fetchMock = async (url, options) => {
+    called++;
+    assert.equal(url, 'https://api.indexnow.org/indexnow');
+    assert.equal(options.method, 'POST');
+    const body = JSON.parse(options.body);
+    assert.equal(body.host, 'sana-quran.vercel.app');
+    assert.equal(body.keyLocation, `${ORIGIN}/abcdef0123456789.txt`);
+    assert.deepEqual(body.urlList, urls);
+    return {status:202};
+  };
+  assert.deepEqual(await notifyRecentArticles(ORIGIN, 'abcdef0123456789', instant, fetchMock), {submitted:3,status:202});
+  assert.equal(called, 1);
+  assert.deepEqual(await notifyRecentArticles(ORIGIN, 'abcdef0123456789', Date.parse('2026-11-10T09:30:00Z'), fetchMock), {submitted:0,status:null});
+  assert.equal(called, 1);
+  await assert.rejects(notifyRecentArticles(ORIGIN, 'bad', instant, fetchMock));
+});
+
+test('الصفحات والصور وملف IndexNow تعمل، والجدولة محمية', async t => {
+  const oldKey = process.env.INDEXNOW_KEY, oldSecret = process.env.CRON_SECRET;
+  process.env.INDEXNOW_KEY = 'abcdef0123456789';
+  process.env.CRON_SECRET = 'test-secret-with-at-least-16-characters';
+  t.after(() => {
+    if (oldKey === undefined) delete process.env.INDEXNOW_KEY; else process.env.INDEXNOW_KEY = oldKey;
+    if (oldSecret === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = oldSecret;
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const index = await fetch(`${origin}/articles`); assert.equal(index.status, 200);
+  assert.match(await index.text(), /مقالات وأدلة/);
+  const first = await fetch(`${origin}/articles/${articles[0].slug}`); assert.equal(first.status, 200);
+  assert.match(await first.text(), /بمساعدة الذكاء الاصطناعي/);
+  const future = articles.find(a => Date.parse(a.publishedAt) > Date.now());
+  if (future) {
+    const response = await fetch(`${origin}/articles/${future.slug}`);
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.match(await response.text(), /noindex/);
+  }
+  const image = await fetch(`${origin}${articles[0].image}`); assert.equal(image.status, 200);
+  assert.match(image.headers.get('content-type'), /image\/webp/);
+  const key = await fetch(`${origin}/abcdef0123456789.txt`); assert.equal(await key.text(), 'abcdef0123456789');
+  const unauthorized = await fetch(`${origin}/api/cron/indexnow`); assert.equal(unauthorized.status, 401);
+  const wrong = await fetch(`${origin}/api/cron/indexnow`, {headers:{authorization:'Bearer wrong'}}); assert.equal(wrong.status, 401);
+  const head = await fetch(`${origin}/api/cron/indexnow`, {method:'HEAD',headers:{authorization:`Bearer ${process.env.CRON_SECRET}`}}); assert.equal(head.status, 405);
+  const robots = await (await fetch(`${origin}/robots.txt`)).text(); assert.match(robots, /User-agent: \*\nAllow: \/\n/);
+});
