@@ -225,8 +225,10 @@ function sitemapXml(origin, now = Date.now()) {
   const root = `<url><loc>${esc(origin + '/')}</loc></url>`;
   const surahs = chapters.map(c => `<url><loc>${esc(origin + `/surah/${c.number}`)}</loc></url>`).join('');
   const index = `<url><loc>${esc(origin + '/articles')}</loc></url>`;
-  const entries = getPublishedArticles(now).map(a => `<url><loc>${esc(origin + '/articles/' + a.slug)}</loc><lastmod>${esc(a.publishedAt)}</lastmod></url>`).join('');
-  return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${root}${surahs}${index}${entries}</urlset>`;
+  // Covers are declared as image sitemap entries so search engines can associate
+  // each illustration with its article page.
+  const entries = getPublishedArticles(now).map(a => `<url><loc>${esc(origin + '/articles/' + a.slug)}</loc><lastmod>${esc(a.publishedAt)}</lastmod><image:image><image:loc>${esc(new URL(a.image, origin).href)}</image:loc><image:title>${esc(a.title)}</image:title></image:image></url>`).join('');
+  return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">${root}${surahs}${index}${entries}</urlset>`;
 }
 function feedXml(origin, now = Date.now()) {
   const items = getPublishedArticles(now).map(a => {
