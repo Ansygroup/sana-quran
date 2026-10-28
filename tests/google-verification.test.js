@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {server} = require('../server');
 
-test('Google verification is configurable, escaped and present in the initial head', async t => {
+test('Google verification tag and file are served correctly', async t => {
   const oldValue = process.env.GOOGLE_SITE_VERIFICATION;
   t.after(() => {
     if (oldValue === undefined) delete process.env.GOOGLE_SITE_VERIFICATION;
@@ -23,4 +23,10 @@ test('Google verification is configurable, escaped and present in the initial he
   assert.ok(html.includes(tag));
   assert.ok(html.indexOf(tag) < html.indexOf('</head>'));
   assert.ok(html.indexOf(tag) < 2_000_000);
+
+  const filename = 'googleb789508316de731f.html';
+  const verificationFile = await fetch(`${url}${filename}`, {redirect: 'manual'});
+  assert.equal(verificationFile.status, 200);
+  assert.match(verificationFile.headers.get('content-type'), /^text\/html/);
+  assert.equal(await verificationFile.text(), `google-site-verification: ${filename}`);
 });

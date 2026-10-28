@@ -52,3 +52,5 @@ SITE_URL=https://your-domain.example PORT=3000 npm start
 ## التحقق في Google Search Console
 
 أضف `https://sana-quran.vercel.app/` كموقع من نوع **بادئة عنوان URL**، واختر طريقة **علامة HTML**. اضبط متغير البيئة `GOOGLE_SITE_VERIFICATION` على قيمة `content` من الوسم الذي يقدمه Google (أو على سجل `google-site-verification=...` كاملًا)، ثم أعد نشر الموقع. عند ظهور الوسم في الصفحة الرئيسية، اضغط «تحقّق» في Search Console وقدّم `https://sana-quran.vercel.app/sitemap.xml`. احتفظ بالمتغير بعد التحقق حتى يستمر Google في تأكيد الملكية. رمز التحقق يُعرض علنًا في HTML وليس كلمة مرور أو رمز تسجيل دخول.
+
+يمكن إثبات ملكية بادئة عنوان URL أيضًا بطريقة **تحميل ملف HTML**: يُنشر ملف Google الأصلي من مجلد `public/` مباشرة في جذر الموقع، ويجب إبقاؤه دون تعديل بعد نجاح إثبات الملكية. الملف الحالي هو `public/googleb789508316de731f.html`.

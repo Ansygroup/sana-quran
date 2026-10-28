@@ -148,7 +148,7 @@ function getOrigin(req) {
   const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https' ? 'https' : (safeHost.startsWith('localhost') || safeHost.startsWith('127.0.0.1') ? 'http' : 'https');
   return `${proto}://${safeHost}`;
 }
-const mime={'.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.webp':'image/webp','.png':'image/png','.svg':'image/svg+xml','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8'};
+const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.webp':'image/webp','.png':'image/png','.svg':'image/svg+xml','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8'};
 function send(req,res,status,content,type='text/html; charset=utf-8',extra={}) {
  const buf=Buffer.isBuffer(content)?content:Buffer.from(content);
  const compress = buf.length > 1024 && /\b(?:gzip)\b/.test(req.headers['accept-encoding'] || '') && /^(?:text\/|application\/(?:json|xml))/.test(type);
