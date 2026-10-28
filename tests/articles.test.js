@@ -38,8 +38,9 @@ test('الفحص الآلي يستبعد أي مقال ناقص قبل إتاح�
 });
 
 test('الحجب الزمني والخريطة لا يعرضان المقالات المقبلة مبكرًا', () => {
-  assert.equal(getPublishedArticles(Date.parse('2026-10-27T23:59:59Z')).length, 0);
-  assert.equal(getPublishedArticles(Date.parse('2026-10-28T00:00:00Z')).length, 15);
+  assert.equal(getPublishedArticles(Date.parse('2026-10-13T23:59:59Z')).length, 0);
+  assert.equal(getPublishedArticles(Date.parse('2026-10-14T08:00:00Z')).length, 1);
+  assert.equal(getPublishedArticles(Date.parse('2026-10-28T08:00:00Z')).length, 15);
   assert.equal(getPublishedArticles().length, 15);
   const xml = sitemapXml(ORIGIN);
   assert.equal((xml.match(/<loc>/g) || []).length, 131); // 116 fixed pages + 15 articles
@@ -73,7 +74,7 @@ test('IndexNow يرسل المنشور حديثًا فقط ويقف بعد نف�
   assert.equal(validIndexNowKey('../not-a-key'), false);
   const instant = Date.parse('2026-10-28T12:00:00Z');
   const urls = recentArticleUrls(ORIGIN, instant);
-  assert.equal(urls.length, articles.length + 1); // magazine index + every article published today
+  assert.equal(urls.length, 3); // magazine index + the two most recent articles
   assert.equal(urls[0], `${ORIGIN}/articles`);
   let called = 0;
   const bodies = [];
@@ -87,10 +88,10 @@ test('IndexNow يرسل المنشور حديثًا فقط ويقف بعد نف�
     bodies.push(body);
     return {status:202};
   };
-  assert.deepEqual(await notifyRecentArticles(ORIGIN, 'abcdef0123456789', instant, fetchMock), {submitted:16,status:202});
+  assert.deepEqual(await notifyRecentArticles(ORIGIN, 'abcdef0123456789', instant, fetchMock), {submitted:3,status:202});
   assert.deepEqual(bodies[0].urlList, urls);
   assert.equal(called, 1);
-  const afterWindow = await notifyRecentArticles(ORIGIN, 'abcdef0123456789', Date.parse('2026-10-31T09:30:00Z'), fetchMock);
+  const afterWindow = await notifyRecentArticles(ORIGIN, 'abcdef0123456789', Date.parse('2026-11-05T09:30:00Z'), fetchMock);
   assert.deepEqual(afterWindow, {submitted:0,status:null}); // nothing within 48h any more
   assert.equal(called, 1);
   assert.deepEqual(await notifyRecentArticles(ORIGIN, 'abcdef0123456789', Date.parse('2026-11-20T09:30:00Z'), fetchMock), {submitted:0,status:null});
