@@ -108,7 +108,7 @@ function layout({title, description, body, active = '', url, canonical, schema =
   const schemaTag = (schema ? `<script type="application/ld+json">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>` : '') + `<script type="application/ld+json">${JSON.stringify(orgSchema).replace(/</g, '\\u003c')}</script><script type="application/ld+json">${JSON.stringify(siteSchema).replace(/</g, '\\u003c')}</script>`;
   // The verification value is public metadata, not an OAuth credential. Keep it
   // configured in production after verification so Google can recheck ownership.
-  const googleVerification = String(process.env.GOOGLE_SITE_VERIFICATION || '').trim().replace(/^google-site-verification=/i, '');
+  const googleVerification = String(process.env.GOOGLE_SITE_VERIFICATION || (process.env.VERCEL ? '-L9XZtpuZKcKhoRjQUkLAvotYp9eLPJ3azjG1Eetf08' : '')).trim().replace(/^google-site-verification=/i, '');
   // وسم تحقّق Monetag فقط: لا سكربت ولا Service Worker ولا إشعارات.
   // لإزالته بالكامل: احذف السطرين التاليين، واحذف ${monetagVerificationTag} من القالب.
   // قيم التحقّق بياناتٌ عامة لا أسرار؛ يُعرض وسمٌ لكل قيمة حتى يعمل التحقّق
@@ -1086,7 +1086,7 @@ async function handleRequest(req,res){
  try {
   if (!['GET','HEAD'].includes(req.method)) return send(req,res,405,'Method not allowed','text/plain; charset=utf-8',{'Allow':'GET, HEAD'});
   const origin=getOrigin(req); const u=new URL(req.url,origin); const pathname=decodeURIComponent(u.pathname);
-  const indexNowKey = String(process.env.INDEXNOW_KEY || '').trim();
+  const indexNowKey = String(process.env.INDEXNOW_KEY || (process.env.VERCEL ? '2a5bb932479ce08af57e172f880e8d866432aa67f30d6164' : '')).trim();
   if (validIndexNowKey(indexNowKey) && pathname === `/${indexNowKey}.txt`) return send(req,res,200,indexNowKey,'text/plain; charset=utf-8',{'Cache-Control':'public, max-age=3600'});
   if(pathname==='/api/cron/indexnow'){
     if(req.method !== 'GET') return send(req,res,405,JSON.stringify({error:'Method not allowed'}),'application/json; charset=utf-8',{'Allow':'GET','Cache-Control':'no-store'});

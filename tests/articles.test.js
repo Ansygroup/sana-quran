@@ -1174,3 +1174,24 @@ test('تحليلات Vercel تظهر في بيئة Vercel فقط وبلا تبع
   }
   assert.ok(!('@vercel/analytics' in (JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).dependencies || {})), 'لا تبعية @vercel/analytics غير المستخدمة');
 });
+
+test('قيمٌ عامة احتياطية (ميتا Google ومفتاح IndexNow) تعمل على Vercel بلا متغيرات بيئة', async t => {
+  const oldVercel = process.env.VERCEL, oldGoogle = process.env.GOOGLE_SITE_VERIFICATION, oldKey = process.env.INDEXNOW_KEY;
+  t.after(() => {
+    if (oldVercel === undefined) delete process.env.VERCEL; else process.env.VERCEL = oldVercel;
+    if (oldGoogle === undefined) delete process.env.GOOGLE_SITE_VERIFICATION; else process.env.GOOGLE_SITE_VERIFICATION = oldGoogle;
+    if (oldKey === undefined) delete process.env.INDEXNOW_KEY; else process.env.INDEXNOW_KEY = oldKey;
+  });
+  delete process.env.GOOGLE_SITE_VERIFICATION; delete process.env.INDEXNOW_KEY;
+  delete process.env.VERCEL;
+  assert.ok(!homePage(ORIGIN).includes('google-site-verification'), 'خارج Vercel لا ميتا بلا متغيّر صريح');
+  process.env.VERCEL = '1';
+  assert.ok(homePage(ORIGIN).includes('name="google-site-verification" content="-L9XZtpuZKcKhoRjQUkLAvotYp9eLPJ3azjG1Eetf08"'), 'ميتا التحقق الاحتياطية تظهر على Vercel');
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const PUBLIC_KEY = '2a5bb932479ce08af57e172f880e8d866432aa67f30d6164';
+  const key = await fetch(`${origin}/${PUBLIC_KEY}.txt`);
+  assert.equal(key.status, 200);
+  assert.equal(await key.text(), PUBLIC_KEY);
+});
