@@ -3,3 +3,8 @@ public/articles/
 tools/img/
 node_modules/
 *.zip
+
+# أسرار محلية — لا تُرفع أبدًا
+.env.local
+.secrets.local
+.gh-state.json
