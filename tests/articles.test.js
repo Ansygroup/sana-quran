@@ -1158,3 +1158,19 @@ test('كل سورة من ١١٤ لها مقال يذكرها بالاسم', () =
   for (let n = 1; n <= 114; n += 1) if (!seen.has(n)) missing.push(n);
   assert.deepEqual(missing, []);
 });
+
+test('تحليلات Vercel تظهر في بيئة Vercel فقط وبلا تبعية npm', () => {
+  const prev = process.env.VERCEL;
+  try {
+    delete process.env.VERCEL;
+    assert.ok(!homePage(ORIGIN).includes('/_vercel/insights/'), 'لا سكربت تحليلات خارج Vercel');
+    process.env.VERCEL = '1';
+    const html = homePage(ORIGIN);
+    assert.ok(html.includes('src="/_vercel/insights/script.js"'), 'سكربت التحليلات موجود في بيئة Vercel');
+    assert.ok(html.includes('window.va=window.va||'), 'مهيّئ قائمة الأحداث موجود قبل السكربت');
+    assert.ok(html.indexOf('window.va=') < html.indexOf('/_vercel/insights/script.js'), 'المهيّئ يسبق السكربت المؤجّل');
+  } finally {
+    if (prev === undefined) delete process.env.VERCEL; else process.env.VERCEL = prev;
+  }
+  assert.ok(!('@vercel/analytics' in (JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).dependencies || {})), 'لا تبعية @vercel/analytics غير المستخدمة');
+});
