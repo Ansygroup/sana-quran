@@ -19,9 +19,9 @@ const arabicWords = n => new Intl.NumberFormat('ar-EG').format(n);
 const htmlSchema = html => JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
 
 test('الدفعة الحادية والثلاثون: ٢٨٣ مقالة أصلية بصور ومراجع', () => {
-  assert.equal(articles.length, 379);
-  assert.equal(new Set(articles.map(a => a.slug)).size, 379);
-  assert.equal(new Set(articles.map(a => a.title)).size, 379);
+  assert.equal(articles.length, 389);
+  assert.equal(new Set(articles.map(a => a.slug)).size, 389);
+  assert.equal(new Set(articles.map(a => a.title)).size, 389);
   articles.forEach((a, index) => {
     assert.match(a.slug, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
     assert.ok(a.title && a.summary && a.lead && a.imageAlt);
@@ -35,7 +35,7 @@ test('الدفعة الحادية والثلاثون: ٢٨٣ مقالة أصلي
 });
 
 test('الفحص الآلي يستبعد أي مقال ناقص قبل إتاحته', () => {
-  assert.equal(validateArticleBatch(articles).length, 379);
+  assert.equal(validateArticleBatch(articles).length, 389);
   const a = articles[0];
   assert.equal(validateArticleBatch([{...a, image:'/articles/missing.webp'}]).length, 0);
   assert.equal(validateArticleBatch([{...a, sources:[a.sources[0]]}]).length, 0);
@@ -51,12 +51,12 @@ test('الحجب الزمني والخريطة لا يعرضان المقالا�
   assert.equal(getPublishedArticles(Date.parse('2026-10-28T08:00:00Z')).length, 27);
   // لحظة مرجعية بعد آخر نشر (تُحسب من البيانات حتى لا تتعطل مع كل دفعة)
   const REFERENCE = articles.reduce((max, a) => Math.max(max, Date.parse(a.publishedAt)), 0) + 60000;
-  assert.equal(getPublishedArticles(REFERENCE).length, 379);
-  assert.equal(getPublishedArticles().length, 379);
+  assert.equal(getPublishedArticles(REFERENCE).length, 389);
+  assert.equal(getPublishedArticles().length, 389);
   const xml = sitemapXml(ORIGIN);
-  assert.equal((xml.match(/<loc>/g) || []).length, 1252); // home + about + surahs + listen + learn + juz/30 + juz + 29 juz pages + guides + topics + 114 surahs + magazine + archive pages + 355 articles + 6 hubs + questions + surah hub + 696 ayah pages + ayah index
+  assert.equal((xml.match(/<loc>/g) || []).length, 1263); // home + about + surahs + listen + learn + juz/30 + juz + 29 juz pages + guides + topics + 114 surahs + magazine + archive pages + 365 articles + 6 hubs + questions + surah hub + 696 ayah pages + ayah index
   articles.forEach(a => assert.ok(xml.includes(`${ORIGIN}/articles/${a.slug}`)));
-  assert.equal((xml.match(/<image:loc>/g) || []).length, 379);
+  assert.equal((xml.match(/<image:loc>/g) || []).length, 389);
   const hubs = activeCategoryHubs();
   assert.equal(hubs.length, 6);
   hubs.forEach(hub => assert.ok(xml.includes(`${ORIGIN}/articles/category/${hub.slug}`)));
