@@ -1,0 +1,33 @@
+{
+  "enabled": false,
+  "note": "مساحات إعلانية اختيارية. تُعطَّل افتراضيًّا، ولا يُحمَّل أي سكربت ما دامت enabled=false. لتشغيلها: ضع رابط سكربت https في script ثم اجعل enabled=true. لا تُقبل سكربتات عوامل الخدمة (sw) هنا؛ الإعلانات هنا لافتة داخل الصفحة فقط.",
+  "slots": {
+    "article-end": {
+      "script": "",
+      "label": "إعلان"
+    }
+  },
+  "monetag": {
+    "enabled": true,
+    "domain": "5gvci.com",
+    "zoneId": 12145083,
+    "note": "Multitag: وسم الصفحة quge5/data-zone=303289 + عامل /sw.js من منطقة 3nbf4/12146901. swVerbatim=true يخدم ملفهم حرفيًّا بلا كاش سَنا (خطة بديلة إن رفض المدقّق).",
+    "extraScripts": [
+      {
+        "src": "https://quge5.com/88/tag.min.js",
+        "zone": "303289",
+        "label": "Monetag OnClick"
+      }
+    ],
+    "swDomain": "3nbf4.com",
+    "swZoneId": 12146901,
+    "swAlternates": [
+      {
+        "domain": "3nbf4.com",
+        "zoneId": 12146901,
+        "note": "منطقة Push ثانية أرسلها المالك؛ لا يمكن أن تعمل مع الأولى في العامل نفسه."
+      }
+    ],
+    "swVerbatim": false
+  }
+}

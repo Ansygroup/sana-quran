@@ -1,0 +1,5 @@
+# الصور لا تُدار في git (مصادرها في tools/img) — تُولَّد بـ tools/crop.py
+public/articles/
+tools/img/
+node_modules/
+*.zip
