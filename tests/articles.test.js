@@ -1195,3 +1195,20 @@ test('قيمٌ عامة احتياطية (ميتا Google ومفتاح IndexNow)
   assert.equal(key.status, 200);
   assert.equal(await key.text(), PUBLIC_KEY);
 });
+
+test('الأصل الكانوني يُقفَل على النطاق الدائم في بيئة Vercel بلا SITE_URL', async t => {
+  const oldVercel = process.env.VERCEL, oldSite = process.env.SITE_URL;
+  t.after(() => {
+    if (oldVercel === undefined) delete process.env.VERCEL; else process.env.VERCEL = oldVercel;
+    if (oldSite === undefined) delete process.env.SITE_URL; else process.env.SITE_URL = oldSite;
+  });
+  delete process.env.SITE_URL; process.env.VERCEL = '1';
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const home = await (await fetch(`${origin}/`)).text();
+  assert.ok(home.includes('<link rel="canonical" href="https://sana-quran-nu.vercel.app/"'), 'كانونيكال الرئيسية على النطاق الدائم');
+  const sm = await (await fetch(`${origin}/sitemap.xml`)).text();
+  assert.ok(sm.includes('<loc>https://sana-quran-nu.vercel.app/</loc>'), 'روابط الخريطة على النطاق الدائم');
+  assert.ok(!sm.includes('https://sana-quran.vercel.app/'), 'لا أثر للنطاق القديم في الخريطة');
+});

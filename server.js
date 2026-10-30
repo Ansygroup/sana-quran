@@ -994,7 +994,8 @@ function notFound(origin) {
 }
 const tafsirCache = new Map();
 function getOrigin(req) {
-  if (process.env.SITE_URL) { try { const u = new URL(process.env.SITE_URL); if (/^https?:$/.test(u.protocol)) return u.origin; } catch (_) {} }
+  const configuredSiteUrl = process.env.SITE_URL || (process.env.VERCEL ? 'https://sana-quran-nu.vercel.app' : '');
+  if (configuredSiteUrl) { try { const u = new URL(configuredSiteUrl); if (/^https?:$/.test(u.protocol)) return u.origin; } catch (_) {} }
   const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000').split(',')[0].trim();
   const safeHost = /^[a-z0-9.\-:\[\]]+$/i.test(host) ? host : 'localhost:3000';
   const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https' ? 'https' : (safeHost.startsWith('localhost') || safeHost.startsWith('127.0.0.1') ? 'http' : 'https');
