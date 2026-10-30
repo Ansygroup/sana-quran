@@ -526,3 +526,7 @@
 .faq-answer{padding:0 0 14px}
 .faq-answer p{font-size:14px;line-height:2.15;color:var(--text);margin:0}
 @media (max-width:900px){.article-faq{padding:20px 18px 6px}.faq-item summary{font-size:13px}}
+
+/* نتيجة البحث: تمييز المقال الذي طابق متنه لا عنوانه فقط */
+.search-articles li a small{color:var(--muted);font-size:12px;line-height:2}
+.search-articles li a span{color:#8c9a89;font-size:10px;letter-spacing:.2px}

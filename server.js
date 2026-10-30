@@ -920,13 +920,48 @@ function articlePage(article, origin, now = Date.now()) {
   ]};
   return layout({title:(article.title.length > 58 ? article.title : `${article.title} | مجلة سَنا`),description:article.summary,body,active:'articles',url:pageUrl,schema,image:article.image,type:'article',publishedAt:article.publishedAt,preload:coverPreload});
 }
+// البحث في المجلة كان يقف عند العنوان والملخص والمقدمة، فيفشل في العثور على
+// مقالٍ يعرف صاحبه أنه يذكر كلمةً بعينها في متنه. هنا يُبنى نصٌّ كامل مرةً واحدة
+// لكل مقال (مع الأسئلة السريعة)، ويُستخرج منه مقتطفٌ حول موضع الإصابة.
+let searchTextCache = { size: -1, map: new Map() };
+function searchTextFor(article) {
+  // الفهرس يُبنى مرة واحدة لكل مجموعة مقالات، لا في كل طلب بحث.
+  if (searchTextCache.size !== validatedArticles.length) {
+    searchTextCache = { size: validatedArticles.length, map: new Map(validatedArticles.map(a => [a.slug, articleSearchText(a)])) };
+  }
+  return searchTextCache.map.get(article.slug) || articleSearchText(article);
+}
+function articleSearchText(article) {
+  return normalize([article.title, article.summary, article.lead]
+    .concat(article.sections.flatMap(section => [section.heading].concat(section.paragraphs)))
+    .concat((article.faq || []).flatMap(item => [item.q, item.a]))
+    .join(' '));
+}
+function articleSnippet(article, needle) {
+  const parts = [article.lead].concat(article.sections.flatMap(s => s.paragraphs))
+    .concat((article.faq || []).map(item => item.a));
+  const hit = parts.find(text => normalize(text).includes(needle));
+  if (!hit) return { text: article.summary, matched: false };
+  const index = normalize(hit).indexOf(needle);
+  const start = Math.max(0, index - 60);
+  const slice = hit.slice(start, start + 190).trim();
+  return { text: (start > 0 ? '… ' : '') + slice + (start + 190 < hit.length ? ' …' : ''), matched: true };
+}
 function searchPage(query, origin) {
  const cleaned = query.trim().slice(0, 120), q = normalize(cleaned).replace(/^سور[ةه]\s+/, '');
  const chapterMatches = q ? searchable.filter(c => c.norm.includes(q)).slice(0, 12) : [];
  const matches = [];
- const articleHits = q && q.length >= 3 ? getPublishedArticles().filter(a => [a.title, a.summary, a.lead].some(t => normalize(t).includes(q))).slice(0, 6) : [];
+ const articleHits = q && q.length >= 3
+   ? getPublishedArticles()
+       .map(a => ({ a, head: normalize([a.title, a.summary, a.lead].join(' ')), full: searchTextFor(a) }))
+       .filter(item => item.full.includes(q))
+       // العنوان أولًا، ثم المتن — لا يُقدَّم مقالٌ عابر على عنوانٍ مطابق
+       .sort((x, y) => Number(y.head.includes(q)) - Number(x.head.includes(q)))
+       .slice(0, 8)
+       .map(item => ({ ...item.a, snippet: articleSnippet(item.a, q), headHit: item.head.includes(q) }))
+   : [];
  if (q && q.length >= 2) for (const c of searchable) { for (const v of c.verses) { if (v.norm.includes(q)) { matches.push({c,v}); if(matches.length >= 40) break; } } if(matches.length>=40) break; }
- const body=`<div class="shell subpage-shell"><nav class="breadcrumbs" aria-label="مسار الصفحة"><a href="/">الرئيسية</a><span>›</span><span>البحث</span></nav><div class="subpage-title"><span class="section-kicker"><span>✦</span> ابْحَثْ فِي كِتَابِ الله</span><h1>البحث في القرآن<span class="gold-dot">.</span></h1><p>ابحث باسم السورة، أو بكلمة من الآية، أو في مقالات المجلة.</p></div><form class="page-search" action="/search" method="get">${icon('search')}<label class="sr-only" for="page-search-input">كلمة البحث</label><input id="page-search-input" name="q" value="${esc(cleaned)}" placeholder="ابحث عن سورة أو آية..." required><button class="button button-dark">بحث ${icon('arrowLeft','',16)}</button></form>${q?`<p class="search-summary">نتائج البحث عن <strong>«${esc(cleaned)}»</strong>${matches.length===40?' · أول ٤٠ آية':''}</p>`:''}${articleHits.length?`<div class="results-header"><h2>من المجلة</h2><span>${ar(articleHits.length)} مقال</span></div><ul class="search-articles">${articleHits.map(a=>`<li><a href="/articles/${esc(a.slug)}"><span>${esc(a.category)} · ${ar(a.minutes)} دقائق قراءة</span><strong>${esc(a.title)}</strong><small>${esc(a.summary)}</small></a></li>`).join('')}</ul>`:''}${chapterMatches.length?`<div class="results-header"><h2>السور</h2></div><div class="surah-list result-surahs">${chapterMatches.map(surahCard).join('')}</div>`:''}${matches.length?`<div class="results-header"><h2>الآيات</h2><span>${ar(matches.length)} نتيجة${matches.length===40?' أو أكثر':''}</span></div><div class="verse-results">${matches.map(({c,v})=>`<a class="verse-result" href="/surah/${c.number}#ayah-${v.num}"><div><strong>سورة ${esc(c.name)}</strong><span>الآية ${ar(v.num)} ${icon('arrowLeft','',16)}</span></div><p lang="ar">${esc(v.text)}</p></a>`).join('')}</div>`:''}${q && !chapterMatches.length && !matches.length && !articleHits.length?`<div class="empty-state">${icon('search','',28)}<h2>لم نجد نتائج مطابقة</h2><p>جرّب كلمة مختلفة أو ابحث باسم سورة.</p><a href="/surahs" class="button button-outline">استكشف السور ${icon('arrowLeft','',16)}</a></div>`:''}</div>`;
+ const body=`<div class="shell subpage-shell"><nav class="breadcrumbs" aria-label="مسار الصفحة"><a href="/">الرئيسية</a><span>›</span><span>البحث</span></nav><div class="subpage-title"><span class="section-kicker"><span>✦</span> ابْحَثْ فِي كِتَابِ الله</span><h1>البحث في القرآن<span class="gold-dot">.</span></h1><p>ابحث باسم السورة، أو بكلمة من الآية، أو في مقالات المجلة.</p></div><form class="page-search" action="/search" method="get">${icon('search')}<label class="sr-only" for="page-search-input">كلمة البحث</label><input id="page-search-input" name="q" value="${esc(cleaned)}" placeholder="ابحث عن سورة أو آية..." required><button class="button button-dark">بحث ${icon('arrowLeft','',16)}</button></form>${q?`<p class="search-summary">نتائج البحث عن <strong>«${esc(cleaned)}»</strong>${matches.length===40?' · أول ٤٠ آية':''}</p>`:''}${articleHits.length?`<div class="results-header"><h2>من المجلة</h2><span>${ar(articleHits.length)} مقال</span></div><ul class="search-articles">${articleHits.map(a=>`<li><a href="/articles/${esc(a.slug)}"><span>${esc(a.category)} · ${ar(a.minutes)} دقائق قراءة${a.headHit?'':' · تطابق داخل النص'}</span><strong>${esc(a.title)}</strong><small>${esc(a.snippet && a.snippet.matched ? a.snippet.text : a.summary)}</small></a></li>`).join('')}</ul>`:''}${chapterMatches.length?`<div class="results-header"><h2>السور</h2></div><div class="surah-list result-surahs">${chapterMatches.map(surahCard).join('')}</div>`:''}${matches.length?`<div class="results-header"><h2>الآيات</h2><span>${ar(matches.length)} نتيجة${matches.length===40?' أو أكثر':''}</span></div><div class="verse-results">${matches.map(({c,v})=>`<a class="verse-result" href="/surah/${c.number}#ayah-${v.num}"><div><strong>سورة ${esc(c.name)}</strong><span>الآية ${ar(v.num)} ${icon('arrowLeft','',16)}</span></div><p lang="ar">${esc(v.text)}</p></a>`).join('')}</div>`:''}${q && !chapterMatches.length && !matches.length && !articleHits.length?`<div class="empty-state">${icon('search','',28)}<h2>لم نجد نتائج مطابقة</h2><p>جرّب كلمة مختلفة أو ابحث باسم سورة.</p><a href="/surahs" class="button button-outline">استكشف السور ${icon('arrowLeft','',16)}</a></div>`:''}</div>`;
  return layout({title:'البحث في القرآن الكريم | سَنا',description:'ابحث في سور القرآن الكريم وآياته.',body,url:origin+'/search',noindex:true});
 }
 function bookmarksPage(origin) {
@@ -1178,4 +1213,4 @@ async function handleRequest(req,res){
 }
 const server=http.createServer(handleRequest);
 if(require.main===module){const port=Number(process.env.PORT)||3000;server.listen(port,'0.0.0.0',()=>console.log(`سَنا يعمل على المنفذ ${port}`));}
-module.exports={articleFaqBlock,searchPage,homePage,AYAH_PAGES,ayahPage,ayahIndexPage,ayahOfDay,AYAH_OF_DAY,ayahLinksFor,keyAyahStrip,AYAH_INDEX,SURAH_ARTICLE_HINTS,surahMentionIndex,surahMentionCache,QuranQuestions,questionsPage,surahMentions,surahArticleHub,surahArticleGroups,articlesPageCount,ARTICLES_PER_PAGE,adSlot,adsConfig,relatedArticlesFor,server,meritStrip,guidesPage,keywordClusters,popularSearches,surahQuickFacts,juzRangeFor,surahTopicsNav,topicsPage,topics,juzPage,juzIndexPage,juzBounds,surahKeyAyahs,keyAyahBlock,handleRequest,robotsTxt,aboutPage,surahsPage,listenPage,learnPage,juzAmmaPage,LEARN_STAGES,learnStageArticles,surahGuides,surahAbout,surahPage,relatedSurahsByJuz,surahStatsFor,surahSummary,surahStats,chapters,verses,splitOpening,normalize,articles,validateArticleBatch,getPublishedArticles,articlesPage,articlePage,sitemapXml,feedXml,llmsTxt,articlesForSurah,surahJournalLinks,CATEGORY_HUBS,activeCategoryHubs,categoryArticles,categoryPage,categoryChips,categoryHubBySlug,recentArticleUrls,notifyRecentArticles,notifyArticleUrls,allIndexableUrls,validIndexNowKey};
+module.exports={articleFaqBlock,articleSearchText,articleSnippet,searchPage,normalize,homePage,AYAH_PAGES,ayahPage,ayahIndexPage,ayahOfDay,AYAH_OF_DAY,ayahLinksFor,keyAyahStrip,AYAH_INDEX,SURAH_ARTICLE_HINTS,surahMentionIndex,surahMentionCache,QuranQuestions,questionsPage,surahMentions,surahArticleHub,surahArticleGroups,articlesPageCount,ARTICLES_PER_PAGE,adSlot,adsConfig,relatedArticlesFor,server,meritStrip,guidesPage,keywordClusters,popularSearches,surahQuickFacts,juzRangeFor,surahTopicsNav,topicsPage,topics,juzPage,juzIndexPage,juzBounds,surahKeyAyahs,keyAyahBlock,handleRequest,robotsTxt,aboutPage,surahsPage,listenPage,learnPage,juzAmmaPage,LEARN_STAGES,learnStageArticles,surahGuides,surahAbout,surahPage,relatedSurahsByJuz,surahStatsFor,surahSummary,surahStats,chapters,verses,splitOpening,normalize,articles,validateArticleBatch,getPublishedArticles,articlesPage,articlePage,sitemapXml,feedXml,llmsTxt,articlesForSurah,surahJournalLinks,CATEGORY_HUBS,activeCategoryHubs,categoryArticles,categoryPage,categoryChips,categoryHubBySlug,recentArticleUrls,notifyRecentArticles,notifyArticleUrls,allIndexableUrls,validIndexNowKey};

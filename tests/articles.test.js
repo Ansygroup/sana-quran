@@ -12,16 +12,16 @@ const {
   keywordClusters, popularSearches, surahQuickFacts,
   relatedArticlesFor, articlesPageCount, surahMentions, surahMentionIndex, articlesForSurah, SURAH_ARTICLE_HINTS, questionsPage, QuranQuestions, surahArticleHub, surahArticleGroups,
   adSlot, ayahPage, ayahIndexPage, ayahOfDay, AYAH_PAGES, homePage, searchPage,
-  surahStatsFor, surahStats, surahSummary
+  surahStatsFor, surahStats, surahSummary, articleSearchText, normalize
 } = require('../server');
 const ORIGIN = 'https://sana-quran.vercel.app';
 const arabicWords = n => new Intl.NumberFormat('ar-EG').format(n);
 const htmlSchema = html => JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
 
 test('الدفعة الحادية والثلاثون: ٢٨٣ مقالة أصلية بصور ومراجع', () => {
-  assert.equal(articles.length, 371);
-  assert.equal(new Set(articles.map(a => a.slug)).size, 371);
-  assert.equal(new Set(articles.map(a => a.title)).size, 371);
+  assert.equal(articles.length, 379);
+  assert.equal(new Set(articles.map(a => a.slug)).size, 379);
+  assert.equal(new Set(articles.map(a => a.title)).size, 379);
   articles.forEach((a, index) => {
     assert.match(a.slug, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
     assert.ok(a.title && a.summary && a.lead && a.imageAlt);
@@ -35,7 +35,7 @@ test('الدفعة الحادية والثلاثون: ٢٨٣ مقالة أصلي
 });
 
 test('الفحص الآلي يستبعد أي مقال ناقص قبل إتاحته', () => {
-  assert.equal(validateArticleBatch(articles).length, 371);
+  assert.equal(validateArticleBatch(articles).length, 379);
   const a = articles[0];
   assert.equal(validateArticleBatch([{...a, image:'/articles/missing.webp'}]).length, 0);
   assert.equal(validateArticleBatch([{...a, sources:[a.sources[0]]}]).length, 0);
@@ -51,12 +51,12 @@ test('الحجب الزمني والخريطة لا يعرضان المقالا�
   assert.equal(getPublishedArticles(Date.parse('2026-10-28T08:00:00Z')).length, 27);
   // لحظة مرجعية بعد آخر نشر (تُحسب من البيانات حتى لا تتعطل مع كل دفعة)
   const REFERENCE = articles.reduce((max, a) => Math.max(max, Date.parse(a.publishedAt)), 0) + 60000;
-  assert.equal(getPublishedArticles(REFERENCE).length, 371);
-  assert.equal(getPublishedArticles().length, 371);
+  assert.equal(getPublishedArticles(REFERENCE).length, 379);
+  assert.equal(getPublishedArticles().length, 379);
   const xml = sitemapXml(ORIGIN);
-  assert.equal((xml.match(/<loc>/g) || []).length, 1244); // home + about + surahs + listen + learn + juz/30 + juz + 29 juz pages + guides + topics + 114 surahs + magazine + archive pages + 355 articles + 6 hubs + questions + surah hub + 696 ayah pages + ayah index
+  assert.equal((xml.match(/<loc>/g) || []).length, 1252); // home + about + surahs + listen + learn + juz/30 + juz + 29 juz pages + guides + topics + 114 surahs + magazine + archive pages + 355 articles + 6 hubs + questions + surah hub + 696 ayah pages + ayah index
   articles.forEach(a => assert.ok(xml.includes(`${ORIGIN}/articles/${a.slug}`)));
-  assert.equal((xml.match(/<image:loc>/g) || []).length, 371);
+  assert.equal((xml.match(/<image:loc>/g) || []).length, 379);
   const hubs = activeCategoryHubs();
   assert.equal(hubs.length, 6);
   hubs.forEach(hub => assert.ok(xml.includes(`${ORIGIN}/articles/category/${hub.slug}`)));
@@ -106,6 +106,47 @@ test('كل مقال لديه صورة hero ونسخة ٦٤٠ على القرص',
 });
 
 // الأسئلة السريعة: عنصر مرئي + FAQPage في البيانات المنظمة، ويجب أن يتطابقا.
+// البحث في المجلة يجب أن يجد الكلمة داخل متن المقال وأسئلته، لا في العنوان فقط.
+test('بحث المجلة يطابق متن المقال ويُظهر مقتطفًا', () => {
+  const clean = w => w.replace(/[«»،.:؛؟\-]/g, '');
+  const pick = words => words.map(clean).find(w => w.length > 6);
+  // كلمةٌ لا ترد في عنوان المقال ولا ملخصه ولا مقدمته، ونادرةٌ حتى لا تُقطع من أول ٨ نتائج
+  const corpus = articles.map(a => articleSearchText(a));
+  const rarity = w => corpus.filter(t => t.includes(normalize(w))).length;
+  const candidates = [];
+  for (const a of articles) {
+    const head = [a.title, a.summary, a.lead].join(' ');
+    for (const p of a.sections.flatMap(x => x.paragraphs)) {
+      const w = pick(p.split(/\s+/).filter(x => !head.includes(x) && rarity(x.replace(/[«»،.:؛؟\-]/g, '')) <= 2));
+      if (w) { candidates.push({ article: a, word: w }); break; }
+    }
+    if (candidates.length >= 2) break;
+  }
+  assert.ok(candidates.length, 'لا توجد كلمةٌ خارج العنوان لاختبار البحث');
+  for (const { article, word } of candidates) {
+    const html = searchPage(word, ORIGIN);
+    assert.ok(html.includes(`/articles/${article.slug}`), `البحث لم يجد «${word}» في متن: ${article.slug}`);
+    assert.ok(/<small>[^<]{20,}<\/small>/.test(html), 'لا مقتطف في نتيجة البحث');
+  }
+  // كلمةٌ من نص الأسئلة السريعة تصل بالمقال صاحبها
+  const withFaq = articles.find(a => Array.isArray(a.faq) && a.faq.length && a.faq[0].a.split(/\s+/).some(w => w.length > 9));
+  const faqWord = pick(withFaq.faq[0].a.split(/\s+/).filter(w => !withFaq.title.includes(w)));
+  assert.ok(searchPage(faqWord, ORIGIN).includes(`/articles/${withFaq.slug}`), 'البحث لا يطابق الأسئلة السريعة: ' + faqWord);
+  // كل من طابق عنوانه/ملخصه/مقدمته يجب أن يسبق من طابقت كلمةٌ في متنه فقط
+  const order = [...searchPage('الكوثر', ORIGIN).matchAll(/href="\/articles\/([a-z0-9-]+)"/g)].map(m => m[1]);
+  const bySlug = new Map(articles.map(a => [a.slug, a]));
+  const headHit = slug => {
+    const a = bySlug.get(slug);
+    return a && normalize([a.title, a.summary, a.lead].join(' ')).includes(normalize('الكوثر'));
+  };
+  const firstBodyOnly = order.findIndex(slug => !headHit(slug));
+  if (firstBodyOnly !== -1) {
+    const after = order.slice(firstBodyOnly);
+    assert.ok(after.every(slug => !headHit(slug)), 'مطابق العنوان يجب أن يسبق مطابق المتن');
+  }
+  assert.ok(order.some(headHit), 'لا نتيجة مطابقة في العنوان لكلمة الكوثر');
+});
+
 test('الأسئلة السريعة تُعرض وتُصدَّر كـFAQPage متطابق', () => {
   const withFaq = articles.filter(a => Array.isArray(a.faq) && a.faq.length);
   assert.ok(withFaq.length >= 8, 'ثماني مقالات على الأقل فيها أسئلة سريعة');
