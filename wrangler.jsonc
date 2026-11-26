@@ -1,0 +1,8 @@
+{
+  "name": "sana-quran",
+  "main": "cf/dist/worker.js",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {"directory": "public", "binding": "ASSETS", "html_handling": "none", "not_found_handling": "none"},
+  "build": {"command": "node cf/build.mjs"}
+}
